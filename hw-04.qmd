@@ -1,0 +1,607 @@
+---
+title: "HW 04"
+author: "Usama Ahmed"
+format: 
+  html:
+    embed-resources: true
+    code-fold: true
+toc: true
+---
+
+## 0 - Setup
+
+```{r, include = FALSE}
+#| label: setup
+
+
+if (!require("pacman")) 
+  install.packages("pacman")
+
+# use this line for installing/loading
+pacman::p_load(tidyverse,
+               gridExtra,
+               grid,
+               gtable,
+               ggpubr,
+               ggmap,
+               ggrepel,
+               patchwork,
+               units,
+               data.table,
+               devtools,
+               tidytuesdayR,
+               here,
+               scales,
+               janitor,
+               ragg,
+               ggthemes,
+               colorspace,
+               broom,
+               ggdist,
+               patchwork,
+               png,
+               showtext,
+               ggimage,
+               tidytext,
+               rworldmap,
+               magick,
+               forcats,
+               kableExtra) 
+
+# Set themes/layouts of html file
+
+ggplot2::theme_set(ggplot2::theme_minimal(base_size = 14))
+
+options(width = 65)
+ 
+knitr::opts_chunk$set(
+  fig.width = 7,
+  fig.asp = 0.618,
+  fig.retina = 3,
+  fig.align = "center",
+  dpi = 300,
+  warning = FALSE,
+  message = FALSE
+)
+
+
+
+```
+
+
+## 1 - Degrees over time 
+
+```{r, fig.width = 12, fig.asp=0.80}
+#| label: Degrees Over Time - Stacked Barplot
+#| fig-alt: "The bar chart titled “Number of Degrees Awarded For Different Majors” represents data for the year 2015. It displays various fields of study on the x-axis and their corresponding percentages on the y-axis. The bars are filled in sky blue with black borders."
+
+# Load data
+
+degree <- read_csv(here("data","BA_degrees.csv"))
+
+# Plot
+
+degree |>
+  filter(year == 2015) |>
+  ggplot(aes(x = reorder(field, perc), y = perc)) +
+  geom_bar(stat = "identity", 
+           color = "black",
+            fill = "skyblue") +
+  theme_minimal() +
+  coord_flip() +
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title.x = element_text(size = 17),
+        legend.position = "none",
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title = element_text(size = 22),
+        plot.subtitle = element_text(size = 18,
+                                    margin = margin(b = 20)),
+        plot.title.position = "plot") +
+  scale_y_continuous(labels = percent_format()) +
+  labs(x = NULL,
+       y = "Percentage",
+       title = "Relative Percentage of Degrees Awarded For Different Majors",
+       subtitle = "For the year 2015")
+
+
+```
+
+I chose side by side bars because I cannot use pie chart and stacked barplot because the percentage of degrees awarded are too small and there are alot of categories so it would be very difficult to read the pie chart. Therefore, by elimination, side-by-side bars seem like the best idea.
+
+
+```{r}
+#| label: Degrees Over Time for Education
+#| fig-alt: "A line graph titled ‘Trend Analysis of Educational Degrees Over Time’ displaying a decline in the percentage from 1970 to 2015."
+
+# Load data and filter field == education
+
+degree <- read_csv(here("data","BA_degrees.csv"))
+
+degree_ed <- subset(degree, field == "Education")
+
+# Plot
+
+degree |>
+  filter(field == "Education") |>
+  ggplot(aes(x = year, y = perc)) +
+  geom_line(size = 1) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              color = "red") +
+  theme_minimal() +
+  scale_y_continuous(labels = percent_format()) +
+  labs(
+       x = "Year", y = "Percentage",
+       title = "Trend Analysis of Educational Degrees Over Time"
+       ) +
+  theme(plot.title.position = "plot")
+```
+We see a monotonic decline in percentage of degrees awarded over time for education. It declined from around 20% in 1971 to 5% in 2015.
+
+```{r, fig.width=12}
+#| label: Degrees over time - Top 10 highlights
+#| fig-alt: "A line graph depicting the highest 10 changing trends in academic degrees awarded across various fields over time. The highlighted fields represent growth in Health Professions, Business, and Physical Sciences, as well as fluctuations in Education, Engineering, Social Sciences, and Humanities."
+
+# Degrees most changed over time
+# Subset Data
+
+min_year_data <- subset(degree, year == min(degree$year))
+max_year_data <- subset(degree, year == max(degree$year))
+
+# Create a data frame with highest change in percentage observations
+
+min_max <- left_join(max_year_data,
+                     min_year_data, 
+                     by = "field", 
+                     suffix = c("_max","_min")) |>
+  select(field,year_max,year_min,count_max,count_min, perc_max,perc_min) |>
+  mutate(perc_change = 100*abs(perc_max - perc_min),
+         count_change = abs(count_max - count_min),
+         perc_recalc = abs(100*((count_max - count_min)/count_max))) |>
+  subset(!(perc_recalc %in% c(Inf,NaN))) |>
+  arrange(desc(perc_change))|>
+  slice_head(n = 10)
+
+degree$category <- ifelse(degree$field %in% min_max$field, degree$field,"Other")
+
+# Select a color palette
+
+palette <- diverging_hcl(10, palette = "Vik")
+
+# Plot
+
+legend_labels <- c(as.character(min_max$field), "Other")
+legend_colors <- c(palette, "darkgray")
+
+ggplot(degree,aes(x = year, y = perc, color = category, group = field)) +
+geom_line(size = 1) +
+scale_y_continuous(labels = percent_format())  +
+scale_color_manual(values = legend_colors,
+                   breaks = legend_labels,
+                   labels = legend_labels) +
+theme_minimal() +
+theme(legend.position = "right",
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.subtitle = element_text(margin = margin(b = 20),
+                                   size = 18),
+      plot.title.position = "plot",
+      plot.title = element_text(size = 22),
+      axis.text.y = element_text(size = 12),
+      axis.text.x = element_text(size = 12),
+      axis.title.x = element_text(size = 17),
+      axis.title.y = element_text(size = 17),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 14)) +
+  labs(x = "Year",
+       y = "Percentage",
+       color = "Field",
+       title = "Percentage Change in Degrees Awarded for Different Fields Over Time",
+       subtitle = "Highlighting Top 10 Fields")
+
+
+
+```
+
+I defined "Changed the most" as the degrees that had the highest increase/decrease from 1971 till 2015. I subtracted the percentage of degrees awarded in 2015 from the percentage in 1971 to see the percentage change. Then I took the absolute of the resulting column (percentage change) and picked the top degrees with highest percentage change. 
+
+```{r, fig.width=12}
+#| label: Degrees over time - Top 10 highlights + other grouped
+#| fig-alt: "A line graph depicting the changing trends in academic degrees awarded across various fields over time. The highlighted fields represent growth in Health Professions, Business, and Physical Sciences, as well as fluctuations in Education, Engineering, Social Sciences, and Humanities. Every other field other than the top 10 fields is depicted by a single gray line."
+
+# Third plot
+
+# Create categories
+
+degree$category_fct <- fct_other(degree$field, keep = min_max$field)
+
+new_plot <- degree |>
+  group_by(category_fct, year) |>
+  summarise(mean_perc = mean(perc))
+
+# Plot 
+
+ggplot(new_plot,aes(x = year, y = mean_perc, color = category_fct)) +
+geom_line(size = 1) +
+scale_y_continuous(labels = percent_format())  +
+scale_color_manual(values = legend_colors,
+                   breaks = legend_labels,
+                   labels = legend_labels) +
+theme_minimal() +
+theme(legend.position = "right",
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.x = element_blank(),
+      panel.grid.minor.y = element_blank(),
+      plot.subtitle = element_text(margin = margin(b = 20),
+                                   size = 18),
+      plot.title.position = "plot",
+      plot.title = element_text(size = 22),
+      axis.text.y = element_text(size = 12),
+      axis.text.x = element_text(size = 12),
+      axis.title.x = element_text(size = 17),
+      axis.title.y = element_text(size = 17),
+      legend.text = element_text(size = 12),
+      legend.title = element_text(size = 14)) +
+  labs(x = "Year",
+       y = "Percentage",
+       color = "Field",
+       title = "Percentage Change in Degrees Awarded for Different Fields Over Time",
+       subtitle = "Highlighting Top 10 Fields")
+
+
+
+
+```
+
+
+## 2 - Country populations.
+
+```{r}
+#| label: Country Population
+#| fig-alt: "The bar graph titled “Top 10 Countries with the Highest Population in 2020” visually represents the population disparities among countries. China and India stand out with significantly larger populations compared to other nations. The graph highlights the global distribution of population, emphasizing the dominance of these two countries in terms of sheer numbers."
+
+# Load data
+
+cp <- read_csv(here("data","country-pop.csv"), skip = 3)
+
+# Data preprocessing
+
+cp <- subset(cp, select = -ncol(cp))
+
+cp <- janitor::clean_names(cp)
+
+data("countryExData")
+
+coun_code <- countryExData$ISO3V10 |> as.list()
+
+cp_2020 <- cp |> 
+  filter(country_code %in% coun_code) |>
+  arrange(desc(x2020)) |>
+  slice_head(n = 10) |>
+  select(country_name, country_code, indicator_name, indicator_code, x2020) |>
+  rename(population = x2020)
+
+# Make custom labels and breaks
+
+custom_labels <- function(x) {
+  ifelse(x < 1000000000, paste0(x / 1000000, "M"), paste0(x / 1000000000, "B"))
+}
+
+custom_breaks <- c(seq(0, 800000000, by = 200000000), seq(1000000000, 1500000000, by = 200000000))
+
+# Plot
+
+ggplot(cp_2020, aes(x = reorder(country_name, -population), y = population)) +
+  geom_bar(stat = "identity", 
+           fill = "purple",
+           color = "black") +
+  labs(title = "Top 10 Countries with the Highest Population in 2020",
+       caption = "Source: The World Bank",
+       x = "Country",
+       y = "Population") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,
+                                   margin = margin(t = -1, unit = "lines")),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title.position = "plot",
+        plot.title = element_text(margin = margin(b = 10))) +
+  scale_y_continuous(labels = custom_labels,
+                     breaks = custom_breaks)
+
+
+  
+```
+
+## 3 - Battle of the newspapers.
+
+```{r}
+#| label: Battle of Newspapers
+
+# Load Data
+
+co <- read_csv(here("data","charlotte_observer_2019.csv"))
+bs <- read_csv(here("data","baltimore_sun_2019.csv"))
+
+co$title <- gsub("’","'",co$title)
+
+# Find common words without stop words for charlotte observer
+
+words_co <- co |>
+  unnest_tokens(word, title) |>
+  anti_join(stop_words) 
+
+words_co <- words_co |> 
+  count(word, sort = TRUE) |>
+  slice_head(n = 20) |>
+  rename(count = n)
+
+# Find common words without stop words for baltimore sun
+
+words_bs <- bs |>
+  unnest_tokens(word, title) |>
+  anti_join(stop_words) 
+
+words_bs <- words_bs |> 
+  count(word, sort = TRUE) |>
+  slice_head(n = 20) |>
+  rename(count = n)
+```
+ 
+#### Most Common Words used in Charlotte Observer
+```{r}
+#| label: Charlotte Observer count
+kable(words_co, 'html') |>
+  kable_styling(font_size = 12 , 
+                bootstrap_options = c("striped", "hover","bordered"),
+                full_width = F) 
+```
+
+#### Most Common Words used in Baltimore Sun
+```{r}
+#| label: Baltimore Sun count
+kable(words_bs, 'html') |>
+  kable_styling(font_size = 12 , 
+                bootstrap_options = c("striped", "hover","bordered"),
+                full_width = F) 
+```
+
+Both newspapers emphasize "police" and "school" news. The Charlotte Observer prioritizes local sports ("panthers," "hornets," "football," "basketball") and Charlotte-specific topics ("charlotte," "nc").
+Conversely, the Baltimore Sun highlights Baltimore-specific themes ("baltimore," "city," "maryland") and regional concerns ("howard," "region"). Both papers reflect their respective regions' interests while sharing common coverage areas.
+
+#### With Patchwork
+```{r}
+#| label: With Patchwork
+#| fig-alt: "The image displays two bar plots side by side, representing the top 20 most common words found in Charlotte Observer and Baltimore Sun newspapers respectively. The bars are colored magenta for Charlotte Observer and green for Baltimore Sun, with some words not appearing in decreasing order of count."
+
+# Charlotte Observer Plot
+
+n1 <- ggplot(words_co, aes(x = reorder(word, -count), 
+                           y = count)) +
+  geom_bar(stat = "identity",
+           fill = "magenta",
+           color = "black") +
+  labs(title = "Charlotte Observer",
+       x = NULL,
+       y = "Count") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0,1600,200)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,
+                                   margin = margin(t = -1.3, unit = "lines")),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title.position = "plot")
+
+# Baltimore Sun
+
+n2 <- ggplot(words_bs, aes(x = reorder(word, -count), 
+                           y = count)) +
+  geom_bar(stat = "identity",
+           fill = "green",
+           color = "black") +
+  labs(title = "Baltimore Sun",
+       x = NULL,
+       y = NULL) +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0,1600,200)) +
+  coord_cartesian(ylim = c(0,1600)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,
+                                   margin = margin(t = -1.3, unit = "lines")),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title.position = "plot")
+  
+combined <- n1 + n2 +
+  plot_layout(ncol = 2) +
+  plot_annotation(title = "Top 20 Most Common Words in Newspapers") & theme(plot.title = element_text(hjust = 0.5), plot.tag = element_text(size = 15, face = "bold"))
+
+print(combined)
+
+
+
+```
+
+#### With Facet-wrap
+```{r}
+#| label: With facetwrap
+#| fig-alt: "The image displays two bar plots side by side, representing the top 20 most common words found in Charlotte Observer and Baltimore Sun newspapers respectively. The bars are colored magenta for Charlotte Observer and green for Baltimore Sun, with some words not appearing in decreasing order of count."
+
+# Load data
+
+co1 <- read_csv(here("data","charlotte_observer_2019.csv")) |> select(paper, title)
+bs1 <- read_csv(here("data","baltimore_sun_2019.csv")) |> select(paper, title)
+
+# Data wrangling to select most common words
+
+co1$title <- gsub("’","'",co1$title)
+
+combined_paper <- rbind(co1,bs1)
+
+combined_paper$type <- ifelse(grepl("Charlotte Observer",combined_paper$paper),
+                              "Charlotte Observer",
+                              "Baltimore Sun")
+
+
+combined_paper_words <- combined_paper |>
+  unnest_tokens(word, title) |>
+  anti_join(stop_words) 
+
+combined_paper_words <- combined_paper_words |> 
+  group_by(type) |>
+  count(word, sort = TRUE) |>
+  slice_head(n = 20) |>
+  rename(count = n)
+
+# Data preprocessing
+
+combined_paper_words$type <- factor(combined_paper_words$type, 
+                                    levels = c("Charlotte Observer", "Baltimore Sun"))
+
+combined_paper_words <- combined_paper_words |>
+  mutate(word = case_when(type == "Charlotte Observer" & word == "school" ~ " school",
+                          type == "Charlotte Observer" & word == "police" ~ " police",
+                          TRUE ~ word))
+# Plot
+
+ggplot(combined_paper_words, aes(x = reorder(word, -count),
+                                 y = count,
+                                 fill = type)) +
+  geom_bar(stat = "identity",
+           color = "black") +
+  facet_wrap(~ type, scales = "free") +
+  labs(title = "Top 20 Most Common Words in Newspapers",
+       x = NULL,
+       y = "Count") +
+  scale_fill_manual(values = c("Charlotte Observer" = "magenta", "Baltimore Sun" = "green")) +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0,1600,200)) +
+  coord_cartesian(ylim = c(0,1600)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,
+                                   margin = margin(t = -1.3, unit = "lines")),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor.x = element_blank(),
+        panel.grid.minor.y = element_blank(),
+        plot.title.position = "plot",
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5,
+                                  size = 17),
+        strip.text = element_text(size = 13))
+
+```
+## 4 - Brexit.
+
+```{r, fig.height=7, fig.asp=0.8}
+#| label: Brexit Plot Recreation
+#| fig-alt: "The image displays three bar plots labeled A, B, and C showcasing survey results on opinions about how well or badly respondents think their government is handling Britain’s exit from the European Union. Different colors represent varying opinions from very well to very badly."
+
+
+# Load data
+
+brexit <- read_csv(here("data","brexit.csv"))
+
+# Data preprocessing
+
+brexit <- brexit |> filter(opinion != "Don't know")
+
+brexit$region <- case_when(brexit$region == "scot" ~ "Scotland",
+                           brexit$region == "london" ~ "London",
+                           brexit$region == "rest_of_south" ~ "Rest of South",
+                           brexit$region == "midlands_wales" ~ "Midlands / Wales",
+                           brexit$region == "north" ~ "North",
+                           TRUE ~ "NA")
+
+
+brexit$region <- factor(brexit$region, levels = c("London",
+                                                  "Rest of South",
+                                                  "Midlands / Wales",
+                                                  "North",
+                                                  "Scotland"))
+
+brexit$opinion <- factor(brexit$opinion, levels = c("Very well",
+                                                  "Fairly well",
+                                                  "Fairly badly",
+                                                  "Very badly"
+                                                  ))
+
+# Select color palette
+
+diverging_palette <- diverging_hcl(4, palette = "Blue-Red")
+
+# Plots 
+
+plot_a <- ggplot(brexit, 
+                 aes(x=region, 
+                     fill=opinion)) +
+  geom_bar(position="fill") +
+  coord_flip() +
+  scale_fill_manual(values=diverging_palette) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(y = "Percentage",
+       x = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+plot_b <- ggplot(brexit, 
+                 aes(x=region, 
+                     fill=opinion)) +
+  geom_bar() +
+  coord_flip() +
+  scale_fill_manual(values= diverging_palette) +
+  labs(y = "Count",
+       x = NULL) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+
+plot_c <- ggplot(brexit, aes(x=opinion, fill = opinion)) +
+  geom_bar() +
+  scale_y_continuous(breaks = seq(0,200, by = 100), 
+                     labels = c(0,100,200),
+                     limits = c(0,300)) +
+  facet_wrap(~region, scales = "fixed", ncol = 5, axis.labels = "margins") +
+  scale_fill_manual(values= diverging_palette) +
+  labs(x = NULL,
+       y = NULL,
+       title = "How well or badly do you think the government are doing\nat handling Britain's exit from the European Union?",
+       subtitle = "YouGov Survey Results, 2-3 September 2019",
+       caption = "Source: bit.ly/2lCJZVg") +
+  theme_minimal() +
+  coord_flip() +
+  theme(legend.position = "none") 
+
+# Combine plots using patchwork
+
+ guide_area() + ((plot_a + plot_b) / plot_c) +
+  plot_annotation(tag_levels = "A") + 
+  plot_layout(guides = "collect", 
+              heights = unit(c(1, 1), c("cm", "null"))) &
+  guides(fill = guide_legend(reverse=TRUE)) & 
+  theme_minimal() &
+  theme(legend.position = "top",
+        legend.text = element_text(size = 8),
+        legend.title = element_text(size = 9),
+        plot.title = element_text(size = 12),
+        plot.subtitle = element_text(size = 9)) &
+  labs(fill = "Opinion") 
+
+
+
+
+```
+
+Captions: 
+
+- Plot-A: Public opinion in different UK regions on Britain’s exit from the European Union, represented in percentages.
+
+- Plot-B: The count of people in various UK regions expressing their opinion on Britain’s exit from the European Union.
+
+- Plot-C: A breakdown of opinions by region on the government’s handling of Britain’s EU exit, quantified by respondent count.
+
+
